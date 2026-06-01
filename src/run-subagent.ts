@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import type { AgentEvent, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 
 export type SubagentRunResult = {
@@ -13,6 +13,8 @@ export type SubagentRunResult = {
     messages: Message[];
     finalOutput: string;
 };
+
+type SubagentUpdateCallback = (partial: AgentToolResult<string>) => void;
 
 type ChildPiInvocation = {
     args: string[];
@@ -55,6 +57,7 @@ export function runSubagent(
     agent: AgentConfig,
     task: string,
     signal?: AbortSignal,
+    onMessageUpdate?: SubagentUpdateCallback,
 ): Promise<SubagentRunResult> {
     const invoke = buildChildPiInvocation(agent, task);
     return new Promise((resolve, reject) => {
@@ -78,10 +81,19 @@ export function runSubagent(
 
         let stdout = "";
         let stderr = "";
+        let stdoutBuffer = "";
+        const messages: Message[] = [];
+
         child.stdout.setEncoding("utf8");
         child.stderr.setEncoding("utf8");
         child.stdout.on("data", (chunk) => {
             stdout += chunk;
+            stdoutBuffer += chunk;
+            const lines = stdoutBuffer.split("\n");
+            stdoutBuffer = lines.pop() ?? "";
+            for (const line of lines) {
+                processAgentEventLine(line, messages, onMessageUpdate);
+            }
         });
         child.stderr.on("data", (chunk) => {
             stderr += chunk;
@@ -100,7 +112,9 @@ export function runSubagent(
                 reject(new Error("Subagent was aborted"));
                 return;
             }
-            const messages = collectMessages(stdout);
+            if (stdoutBuffer.trim()) {
+                processAgentEventLine(stdoutBuffer, messages, onMessageUpdate);
+            }
             resolve({
                 exitCode,
                 stdout,
@@ -120,20 +134,47 @@ function parseAgentEvent(line: string): AgentEvent | undefined {
     }
 }
 
-function collectMessages(stdout: string): Message[] {
-    const messages: Message[] = [];
-    for (const line of stdout.split("\n")) {
-        if (!line.trim()) continue;
+function processAgentEventLine(
+    line: string,
+    messages: Message[],
+    onMessageUpdate?: SubagentUpdateCallback,
+): void {
+    if (!line.trim()) return;
 
-        const event = parseAgentEvent(line);
-        if (!event) continue;
+    const event = parseAgentEvent(line);
+    if (!event) return;
 
-        if (event.type === "message_end") {
-            messages.push(event.message as Message);
+    if (event.type === "message_end") {
+        const msg = event.message as Message;
+        messages.push(msg);
+
+        if (msg.role === "assistant") {
+            const text = getMessageText(msg);
+            if (!text) return;
+
+            onMessageUpdate?.({
+                content: [{ type: "text", text }],
+                details: text,
+            });
         }
     }
+}
 
-    return messages;
+/*
+ * one message could have multiple content part.
+ */
+function getMessageText(message: Message): string {
+    const texts: string[] = [];
+    for (const part of message.content) {
+        if (typeof part === "string") {
+            texts.push(part);
+            continue;
+        }
+        if (part.type === "text") {
+            texts.push(part.text);
+        }
+    }
+    return texts.join("\n\n");
 }
 
 function getFinalOutput(messages: Message[]): string {
@@ -141,9 +182,8 @@ function getFinalOutput(messages: Message[]): string {
         const msg = messages[i];
         if (!msg) continue;
         if (msg.role === "assistant") {
-            for (const part of msg.content) {
-                if (part.type === "text") return part.text;
-            }
+            const text = getMessageText(msg);
+            if (text) return text;
         }
     }
     return "";

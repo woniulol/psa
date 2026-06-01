@@ -25,7 +25,7 @@ export default function registerPsa(pi: ExtensionAPI): void {
             _toolCallId,
             params,
             signal,
-            _onUpdate,
+            onUpdate,
             _ctx,
         ): Promise<AgentToolResult<string>> {
             const agents = discoverUserAgents();
@@ -35,7 +35,12 @@ export default function registerPsa(pi: ExtensionAPI): void {
             }
             const agentConfig = loadAgent(selectedAgent);
 
-            const result = await runSubagent(agentConfig, params.task, signal);
+            const result = await runSubagent(
+                agentConfig,
+                params.task,
+                signal,
+                onUpdate,
+            );
             if (result.exitCode !== 0) {
                 throw new Error(
                     result.stderr ||
