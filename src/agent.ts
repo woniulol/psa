@@ -57,3 +57,12 @@ function parseTools(value: string): string[] {
         .map((tool) => tool.trim())
         .filter(Boolean);
 }
+
+export function resolveAgent(agentName: string): AgentConfig {
+    const agents = discoverUserAgents();
+    const selectedAgent = agents.find((agent) => agent.name === agentName);
+    if (!selectedAgent) {
+        throw new Error(`Agent not found: ${agentName}`);
+    }
+    return loadAgent(selectedAgent);
+}

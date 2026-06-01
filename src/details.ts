@@ -1,18 +1,20 @@
-export type SubagentDetails = {
-    mode: "single";
-    result: {
-        agent: string;
-        task: string;
-        exitCode: number | null;
-        finalOutput: string;
-        stderr: string;
-        messageCount: number;
-    };
+export type SubagentResult = {
+    agent: string;
+    task: string;
+    exitCode: number | null;
+    finalOutput: string;
+    stderr: string;
+    messageCount: number;
 };
 
-export function makeDetails(input: SubagentDetails["result"]): SubagentDetails {
-    return {
-        mode: "single",
-        result: input,
-    };
+export type SubagentDetails = {
+    mode: "single" | "parallel";
+    results: SubagentResult[];
+};
+
+export function makeDetails(
+    mode: SubagentDetails["mode"],
+    results: SubagentResult[],
+): SubagentDetails {
+    return { mode, results };
 }

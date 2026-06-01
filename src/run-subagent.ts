@@ -16,7 +16,9 @@ export type SubagentRunResult = {
     finalOutput: string;
 };
 
-type SubagentUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
+export type SubagentUpdateCallback = (
+    partial: AgentToolResult<SubagentDetails>,
+) => void;
 
 type ChildPiInvocation = {
     args: string[];
@@ -186,14 +188,16 @@ function handleOnUpdate(
     if (!text) return;
     onUpdate?.({
         content: [{ type: "text", text }],
-        details: makeDetails({
-            agent,
-            task,
-            exitCode: null,
-            finalOutput: text,
-            stderr: "",
-            messageCount,
-        }),
+        details: makeDetails("single", [
+            {
+                agent,
+                task,
+                exitCode: null,
+                finalOutput: text,
+                stderr: "",
+                messageCount,
+            },
+        ]),
     });
 }
 
