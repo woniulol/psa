@@ -14,31 +14,68 @@ export type SubagentRunResult = {
     finalOutput: string;
 };
 
-export function buildChildPiArgs(agent: AgentConfig, task: string): string[] {
+type ChildPiInvocation = {
+    args: string[];
+    cleanup: () => void;
+};
+
+export function buildChildPiInvocation(
+    agent: AgentConfig,
+    task: string,
+): ChildPiInvocation {
     const args = ["--mode", "json", "-p", "--no-session"];
+    const promptFile = writeAgentPromptTempFile(agent);
 
     if (agent.model) args.push("--model", agent.model);
     if (agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
-    args.push("--append-system-prompt", writeAgentPromptTempFile(agent));
+    args.push("--append-system-prompt", promptFile.filePath);
 
     args.push(task);
-    return args;
+    return {
+        args,
+        cleanup: () => {
+            try {
+                fs.rmSync(promptFile.dir, { recursive: true, force: true });
+            } catch {}
+        },
+    };
 }
 
-export function writeAgentPromptTempFile(agent: AgentConfig): string {
+export function writeAgentPromptTempFile(agent: AgentConfig): {
+    dir: string;
+    filePath: string;
+} {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "psa-agent-"));
     const filePath = path.join(dir, `${agent.name}.md`);
     fs.writeFileSync(filePath, agent.systemPrompt, "utf8");
-    return filePath;
+    return { dir, filePath };
 }
 
 export function runSubagent(
     agent: AgentConfig,
     task: string,
+    signal?: AbortSignal,
 ): Promise<SubagentRunResult> {
-    const args = buildChildPiArgs(agent, task);
+    const invoke = buildChildPiInvocation(agent, task);
     return new Promise((resolve, reject) => {
-        const child = spawn("pi", args, { stdio: ["ignore", "pipe", "pipe"] });
+        const child = spawn("pi", invoke.args, { stdio: ["ignore", "pipe", "pipe"] });
+
+        let wasAborted = false;
+        let killTimer: NodeJS.Timeout | undefined;
+        const killChild = () => {
+            wasAborted = true;
+            child.kill("SIGTERM");
+            killTimer = setTimeout(() => {
+                if (!child.killed) child.kill("SIGKILL");
+            }, 5000);
+        };
+
+        if (signal?.aborted) {
+            killChild();
+        } else {
+            signal?.addEventListener("abort", killChild, { once: true });
+        }
+
         let stdout = "";
         let stderr = "";
         child.stdout.setEncoding("utf8");
@@ -49,8 +86,20 @@ export function runSubagent(
         child.stderr.on("data", (chunk) => {
             stderr += chunk;
         });
-        child.on("error", reject);
+        child.on("error", (err) => {
+            signal?.removeEventListener("abort", killChild);
+            if (killTimer) clearTimeout(killTimer);
+            invoke.cleanup();
+            reject(err);
+        });
         child.on("close", (exitCode) => {
+            signal?.removeEventListener("abort", killChild);
+            if (killTimer) clearTimeout(killTimer);
+            invoke.cleanup();
+            if (wasAborted) {
+                reject(new Error("Subagent was aborted"));
+                return;
+            }
             const messages = collectMessages(stdout);
             resolve({
                 exitCode,

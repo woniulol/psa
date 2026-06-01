@@ -24,7 +24,7 @@ export default function registerPsa(pi: ExtensionAPI): void {
         async execute(
             _toolCallId,
             params,
-            _signal,
+            signal,
             _onUpdate,
             _ctx,
         ): Promise<AgentToolResult<string>> {
@@ -35,17 +35,7 @@ export default function registerPsa(pi: ExtensionAPI): void {
             }
             const agentConfig = loadAgent(selectedAgent);
 
-            let result;
-            try {
-                result = await runSubagent(agentConfig, params.task);
-            } catch (error) {
-                throw new Error(
-                    `Failed to start subagent ${agentConfig.name}: ${
-                        error instanceof Error ? error.message : String(error)
-                    }`,
-                );
-            }
-
+            const result = await runSubagent(agentConfig, params.task, signal);
             if (result.exitCode !== 0) {
                 throw new Error(
                     result.stderr ||
