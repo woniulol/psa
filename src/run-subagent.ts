@@ -58,6 +58,7 @@ export function writeAgentPromptTempFile(agent: AgentConfig): {
 export function runSubagent(
     agent: AgentConfig,
     task: string,
+    cwd: string,
     signal?: AbortSignal,
     onMessageUpdate?: SubagentUpdateCallback,
 ): Promise<SubagentRunResult> {
@@ -66,6 +67,7 @@ export function runSubagent(
     return new Promise((resolve, reject) => {
         const piInvocation = getPiInvocation(invoke.args);
         const child = spawn(piInvocation.command, piInvocation.args, {
+            cwd,
             stdio: ["ignore", "pipe", "pipe"],
         });
 
