@@ -5,8 +5,6 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AgentEvent, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import type { SaDetails } from "./details.js";
-import { makeDetails } from "./details.js";
 
 export type SubagentRunResult = {
     exitCode: number | null;
@@ -16,7 +14,7 @@ export type SubagentRunResult = {
     finalOutput: string;
 };
 
-type SubagentUpdateCallback = (partial: AgentToolResult<SaDetails>) => void;
+type SubagentUpdateCallback = (partial: AgentToolResult<string>) => void;
 
 type ChildPiInvocation = {
     args: string[];
@@ -94,7 +92,7 @@ export function runSubagent(
             const lines = stdoutBuffer.split("\n");
             stdoutBuffer = lines.pop() ?? "";
             for (const line of lines) {
-                handleLine(agent, task, line, messages, onMessageUpdate);
+                processAgentEventLine(line, messages, onMessageUpdate);
             }
         });
         child.stderr.on("data", (chunk) => {
@@ -115,7 +113,7 @@ export function runSubagent(
                 return;
             }
             if (stdoutBuffer.trim()) {
-                handleLine(agent, task, stdoutBuffer, messages, onMessageUpdate);
+                processAgentEventLine(stdoutBuffer, messages, onMessageUpdate);
             }
             resolve({
                 exitCode,
@@ -136,59 +134,30 @@ function parseAgentEvent(line: string): AgentEvent | undefined {
     }
 }
 
-function handleLine(
-    agent: AgentConfig,
-    task: string,
+function processAgentEventLine(
     line: string,
     messages: Message[],
-    onUpdate?: SubagentUpdateCallback,
+    onMessageUpdate?: SubagentUpdateCallback,
 ): void {
-    const msg = processAgentEventLine(line, messages);
-    if (msg?.role === "assistant") {
-        handleOnUpdate(
-            agent.name,
-            task,
-            messages.length,
-            getMessageText(msg),
-            onUpdate,
-        );
-    }
-}
-
-function processAgentEventLine(line: string, messages: Message[]): Message | undefined {
-    if (!line.trim()) return undefined;
+    if (!line.trim()) return;
 
     const event = parseAgentEvent(line);
-    if (!event) return undefined;
+    if (!event) return;
 
     if (event.type === "message_end") {
         const msg = event.message as Message;
         messages.push(msg);
-        return msg;
+
+        if (msg.role === "assistant") {
+            const text = getMessageText(msg);
+            if (!text) return;
+
+            onMessageUpdate?.({
+                content: [{ type: "text", text }],
+                details: text,
+            });
+        }
     }
-
-    return undefined;
-}
-
-function handleOnUpdate(
-    agent: string,
-    task: string,
-    messageCount: number,
-    text: string,
-    onUpdate?: SubagentUpdateCallback,
-): void {
-    if (!text) return;
-    onUpdate?.({
-        content: [{ type: "text", text }],
-        details: makeDetails({
-            agent,
-            task,
-            exitCode: null,
-            finalOutput: text,
-            stderr: "",
-            messageCount,
-        }),
-    });
 }
 
 /*
