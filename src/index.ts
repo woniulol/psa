@@ -31,30 +31,38 @@ export default function registerPsa(pi: ExtensionAPI): void {
             const agents = discoverUserAgents();
             const selectedAgent = agents.find((agent) => agent.name === params.agent);
             if (!selectedAgent) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `agent not found: ${params.agent}`,
-                        },
-                    ],
-                    details: `${params.agent}: ${params.task}`,
-                };
+                throw new Error(`Agent not found: ${params.agent}`);
             }
             const agentConfig = loadAgent(selectedAgent);
-            const result = await runSubagent(agentConfig, params.task);
+
+            let result;
+            try {
+                result = await runSubagent(agentConfig, params.task);
+            } catch (error) {
+                throw new Error(
+                    `Failed to start subagent ${agentConfig.name}: ${
+                        error instanceof Error ? error.message : String(error)
+                    }`,
+                );
+            }
+
+            if (result.exitCode !== 0) {
+                throw new Error(
+                    result.stderr ||
+                        result.finalOutput ||
+                        `Subagent failed with exit code ${result.exitCode}`,
+                );
+            }
 
             return {
                 content: [
                     {
                         type: "text",
                         text:
-                            result.stdout ||
-                            result.stderr ||
-                            `subagent exited with code ${result.exitCode}`,
+                            result.finalOutput || "subagent completed without output.",
                     },
                 ],
-                details: result.stdout,
+                details: result.finalOutput,
             };
         },
     });

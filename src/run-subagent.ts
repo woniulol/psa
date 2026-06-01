@@ -3,11 +3,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import type { Message } from "@earendil-works/pi-ai";
 
 export type SubagentRunResult = {
     exitCode: number | null;
     stdout: string;
     stderr: string;
+    messages: Message[];
+    finalOutput: string;
 };
 
 export function buildChildPiArgs(agent: AgentConfig, task: string): string[] {
@@ -47,11 +51,51 @@ export function runSubagent(
         });
         child.on("error", reject);
         child.on("close", (exitCode) => {
+            const messages = collectMessages(stdout);
             resolve({
                 exitCode,
                 stdout,
                 stderr,
+                messages,
+                finalOutput: getFinalOutput(messages),
             });
         });
     });
+}
+
+function parseAgentEvent(line: string): AgentEvent | undefined {
+    try {
+        return JSON.parse(line) as AgentEvent;
+    } catch {
+        return undefined;
+    }
+}
+
+function collectMessages(stdout: string): Message[] {
+    const messages: Message[] = [];
+    for (const line of stdout.split("\n")) {
+        if (!line.trim()) continue;
+
+        const event = parseAgentEvent(line);
+        if (!event) continue;
+
+        if (event.type === "message_end") {
+            messages.push(event.message as Message);
+        }
+    }
+
+    return messages;
+}
+
+function getFinalOutput(messages: Message[]): string {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (!msg) continue;
+        if (msg.role === "assistant") {
+            for (const part of msg.content) {
+                if (part.type === "text") return part.text;
+            }
+        }
+    }
+    return "";
 }
