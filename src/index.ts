@@ -22,6 +22,30 @@ const saParam = Type.Object({
 });
 
 export default function registerPsa(pi: ExtensionAPI): void {
+    pi.registerTool({
+        name: "list-subagents",
+        label: "List Subagents",
+        description:
+            "Use when need to find out avaliable subagents from ~/.pi/agent/agents.",
+        parameters: Type.Object({}),
+        async execute(): Promise<AgentToolResult<string>> {
+            const agents = discoverUserAgents().map(loadAgent);
+            const text = agents.length
+                ? agents
+                      .map(
+                          (agent) =>
+                              `- ${agent.name}${agent.description ? `: ${agent.description}` : ""}`,
+                      )
+                      .join("\n")
+                : "No user subagents found in ~/.pi/agent/agents.";
+
+            return {
+                content: [{ type: "text", text }],
+                details: text,
+            };
+        },
+    });
+
     pi.registerTool<typeof saParam, SubagentDetails>({
         name: "my-subagent",
         label: "My Subagent",
