@@ -62,8 +62,12 @@ export function runSubagent(
     onMessageUpdate?: SubagentUpdateCallback,
 ): Promise<SubagentRunResult> {
     const invoke = buildChildPiInvocation(agent, task);
+
     return new Promise((resolve, reject) => {
-        const child = spawn("pi", invoke.args, { stdio: ["ignore", "pipe", "pipe"] });
+        const piInvocation = getPiInvocation(invoke.args);
+        const child = spawn(piInvocation.command, piInvocation.args, {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
 
         let wasAborted = false;
         let killTimer: NodeJS.Timeout | undefined;
@@ -218,4 +222,29 @@ function getFinalOutput(messages: Message[]): string {
         }
     }
     return "";
+}
+
+function getPiInvocation(args: string[]): { command: string; args: string[] } {
+    const currentScript = process.argv[1];
+    const isBunVirtualScript = currentScript?.startsWith("/$bunfs/root/");
+    if (currentScript && !isBunVirtualScript && fs.existsSync(currentScript)) {
+        return {
+            command: process.execPath,
+            args: [currentScript, ...args],
+        };
+    }
+
+    const execName = path.basename(process.execPath).toLowerCase();
+    const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
+    if (!isGenericRuntime) {
+        return {
+            command: process.execPath,
+            args,
+        };
+    }
+
+    return {
+        command: "pi",
+        args,
+    };
 }
