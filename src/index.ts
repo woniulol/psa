@@ -1,7 +1,7 @@
 import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { discoverUserAgents, loadAgent } from "./agent.js";
-import { buildChildPiArgs } from "./run-subagent.js";
+import { runSubagent } from "./run-subagent.js";
 
 const saParam = Type.Object({
     agent: Type.String({
@@ -42,15 +42,19 @@ export default function registerPsa(pi: ExtensionAPI): void {
                 };
             }
             const agentConfig = loadAgent(selectedAgent);
-            const args = buildChildPiArgs(agentConfig, params.task);
+            const result = await runSubagent(agentConfig, params.task);
+
             return {
                 content: [
                     {
                         type: "text",
-                        text: `would delegate to ${params.agent}: ${params.task} w ${args}`,
+                        text:
+                            result.stdout ||
+                            result.stderr ||
+                            `subagent exited with code ${result.exitCode}`,
                     },
                 ],
-                details: `${params.agent}: ${params.task}`,
+                details: result.stdout,
             };
         },
     });
