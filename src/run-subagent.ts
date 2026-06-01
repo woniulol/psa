@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AgentEvent, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import type { SaDetails } from "./details.js";
+import type { SubagentDetails } from "./details.js";
 import { makeDetails } from "./details.js";
 
 export type SubagentRunResult = {
@@ -16,7 +16,7 @@ export type SubagentRunResult = {
     finalOutput: string;
 };
 
-type SubagentUpdateCallback = (partial: AgentToolResult<SaDetails>) => void;
+type SubagentUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
 type ChildPiInvocation = {
     args: string[];

@@ -1,6 +1,6 @@
-export type SaDetails = {
+export type SubagentDetails = {
     mode: "single";
-    items: {
+    result: {
         agent: string;
         task: string;
         exitCode: number | null;
@@ -10,9 +10,9 @@ export type SaDetails = {
     };
 };
 
-export function makeDetails(input: SaDetails["items"]): SaDetails {
+export function makeDetails(input: SubagentDetails["result"]): SubagentDetails {
     return {
         mode: "single",
-        items: input,
+        result: input,
     };
 }

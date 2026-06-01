@@ -6,14 +6,15 @@ import {
 import { Type } from "typebox";
 import { discoverUserAgents, loadAgent } from "./agent.js";
 import { runSubagent } from "./run-subagent.js";
-import type { SaDetails } from "./details.js";
+import type { SubagentDetails } from "./details.js";
 import { makeDetails } from "./details.js";
 import type { Component } from "@earendil-works/pi-tui";
 import { Markdown, Text, Container, Spacer } from "@earendil-works/pi-tui";
 
 const saParam = Type.Object({
     agent: Type.String({
-        description: "Name of the subagent to delegate to.",
+        description:
+            "Name of the subagent to delegate to. This is the markdown filename without .md from ~/.pi/agent/agents.",
     }),
     task: Type.String({
         description: "Task to delegate to a subagent",
@@ -21,9 +22,9 @@ const saParam = Type.Object({
 });
 
 export default function registerPsa(pi: ExtensionAPI): void {
-    pi.registerTool<typeof saParam, SaDetails>({
+    pi.registerTool<typeof saParam, SubagentDetails>({
         name: "my-subagent",
-        label: "my-Subagent",
+        label: "My Subagent",
         description: [
             "Delegate tasks to specialized subagents with isolated context.",
             'Default agent scope is "user" (from ~/.pi/agent/agents).',
@@ -36,7 +37,7 @@ export default function registerPsa(pi: ExtensionAPI): void {
             signal,
             onUpdate,
             _ctx,
-        ): Promise<AgentToolResult<SaDetails>> {
+        ): Promise<AgentToolResult<SubagentDetails>> {
             const agents = discoverUserAgents();
             const selectedAgent = agents.find((agent) => agent.name === params.agent);
             if (!selectedAgent) {
@@ -76,23 +77,33 @@ export default function registerPsa(pi: ExtensionAPI): void {
                 }),
             };
         },
+        renderCall(args, theme, context): Component {
+            const task = context.expanded
+                ? args.task
+                : args.task.length > 60
+                  ? `${args.task.slice(0, 60)}...`
+                  : args.task;
+
+            return new Text(
+                `${theme.fg("toolTitle", theme.bold("my-subagent "))}${theme.fg("accent", args.agent)}\n\n` +
+                    `${theme.fg("dim", task)}`,
+                0,
+                0,
+            );
+        },
         renderResult(result, options, theme, _context): Component {
             const details = result.details;
-            const items = details.items;
+            const run = details.result;
             const icon =
-                items.exitCode === null
+                run.exitCode === null
                     ? theme.fg("muted", "...")
-                    : items.exitCode === 0
+                    : run.exitCode === 0
                       ? theme.fg("success", "✓")
                       : theme.fg("error", "✗");
 
             if (!options.expanded) {
-                const preview = items.finalOutput
-                    ? items.finalOutput.split("\n").slice(0, 3).join("\n")
-                    : "(no output)";
-
                 return new Text(
-                    `${icon} ${theme.fg("toolTitle", theme.bold(items.agent))}\n${theme.fg("toolOutput", preview)}`,
+                    `\n` + `${icon} ${theme.fg("toolTitle", theme.bold(run.agent))}`,
                     0,
                     0,
                 );
@@ -103,36 +114,37 @@ export default function registerPsa(pi: ExtensionAPI): void {
 
             container.addChild(
                 new Text(
-                    `${icon} ${theme.fg("toolTitle", theme.bold(items.agent))} ${theme.fg("muted", `(exit ${items.exitCode ?? "running"})`)}`,
+                    `\n` +
+                        `${icon} ${theme.fg("toolTitle", theme.bold(run.agent))} ${theme.fg("muted", `(exit ${run.exitCode ?? "running"})`)}`,
                     0,
                     0,
                 ),
             );
 
-            container.addChild(new Spacer(1));
-            container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
-            container.addChild(new Text(theme.fg("dim", items.task), 0, 0));
+            // container.addChild(new Spacer(1));
+            // container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
+            // container.addChild(new Text(theme.fg("dim", run.task), 0, 0));
 
             container.addChild(new Spacer(1));
             container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
 
-            if (items.finalOutput) {
+            if (run.finalOutput) {
                 container.addChild(
-                    new Markdown(items.finalOutput, 0, 0, getMarkdownTheme()),
+                    new Markdown(run.finalOutput, 0, 0, getMarkdownTheme()),
                 );
             } else {
                 container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
             }
 
-            if (items.stderr) {
+            if (run.stderr) {
                 container.addChild(new Spacer(1));
                 container.addChild(new Text(theme.fg("muted", "─── Stderr ───"), 0, 0));
-                container.addChild(new Text(theme.fg("error", items.stderr), 0, 0));
+                container.addChild(new Text(theme.fg("error", run.stderr), 0, 0));
             }
 
             container.addChild(new Spacer(1));
             container.addChild(
-                new Text(theme.fg("dim", `${items.messageCount} message(s)`), 0, 0),
+                new Text(theme.fg("dim", `${run.messageCount} message(s)`), 0, 0),
             );
 
             return container;
